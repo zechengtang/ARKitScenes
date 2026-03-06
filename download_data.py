@@ -3,6 +3,7 @@ import subprocess
 import pandas as pd
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 ARkitscense_url = 'https://docs-assets.developer.apple.com/ml-research/datasets/arkitscenes/v1'
 TRAINING = 'Training'
@@ -156,6 +157,7 @@ def download_data(dataset,
                   keep_zip,
                   raw_dataset_assets,
                   should_download_laser_scanner_point_cloud,
+                  num_workers,
                   ):
     metadata = get_metadata(dataset, download_dir)
     if None is metadata:
@@ -163,6 +165,8 @@ def download_data(dataset,
         return
 
     download_dir = os.path.abspath(download_dir)
+    tasks = []
+
     for video_id in sorted(set(video_ids)):
         split = dataset_splits[video_ids.index(video_id)]
         dst_dir = os.path.join(download_dir, dataset, split)
@@ -189,15 +193,27 @@ def download_data(dataset,
             download_laser_scanner_point_clouds_for_video(video_id, metadata, download_dir)
 
         for file_name in file_names:
-            dst_path = os.path.join(dst_dir, file_name)
-            url = url_prefix.format(file_name)
+            tasks.append((file_name, dst_dir, url_prefix))
 
-            if not file_name.endswith('.zip') or not os.path.isdir(dst_path[:-len('.zip')]):
-                download_file(url, dst_path, dst_dir)
-            else:
-                print(f'WARNING: skipping download of existing zip file: {dst_path}')
-            if file_name.endswith('.zip') and os.path.isfile(dst_path):
-                unzip_file(file_name, dst_dir, keep_zip)
+    def process_download_task(task):
+        file_name, dst_dir, url_prefix = task
+        dst_path = os.path.join(dst_dir, file_name)
+        url = url_prefix.format(file_name)
+
+        if not file_name.endswith('.zip') or not os.path.isdir(dst_path[:-len('.zip')]):
+            download_file(url, dst_path, dst_dir)
+        else:
+            print(f'WARNING: skipping download of existing zip file: {dst_path}')
+        if file_name.endswith('.zip') and os.path.isfile(dst_path):
+            unzip_file(file_name, dst_dir, keep_zip)
+
+    if num_workers > 1:
+        print(f"Using parallel downloads with {num_workers} workers")
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            list(executor.map(process_download_task, tasks))
+    else:
+        for task in tasks:
+            process_download_task(task)
 
     if dataset == 'upsampling' and VALIDATION in dataset_splits:
         val_attributes_file = "val_attributes.csv"
@@ -249,6 +265,13 @@ if __name__ == "__main__":
         choices=default_raw_dataset_assets
     )
 
+    parser.add_argument(
+        "--num_workers",
+        type=int,
+        default=1,
+        help='Number of parallel download workers (default: 1, sequential)'
+    )
+
     args = parser.parse_args()
     assert args.video_id is not None or args.video_id_csv is not None, \
         'video_id or video_id_csv must be specified'
@@ -270,10 +293,13 @@ if __name__ == "__main__":
     else:
         raise Exception('No video ids specified')
 
+    assert args.num_workers >= 1, 'num_workers must be >= 1'
+
     download_data(args.dataset,
                   video_ids_,
                   splits_,
                   args.download_dir,
                   args.keep_zip,
                   args.raw_dataset_assets,
-                  args.download_laser_scanner_point_cloud)
+                  args.download_laser_scanner_point_cloud,
+                  args.num_workers)

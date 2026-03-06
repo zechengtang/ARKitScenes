@@ -46,6 +46,9 @@ python3 download_data.py raw --split Training --video_id 47333462 \
 ```
 to download the laser scanner point-clouds (available only for the raw dataset)
 
+
+Use `--num_workers N` to enable parallel downloads when your network/disk can handle it (default is `1`, sequential).
+
 To download with CSV, `download_data.py` expect the first argument to be a dataset name (i.e. 3dod/upsampling/raw), 
 and no need for the fold, because the fold information exist in the CSV file.  
 ```shell script
