@@ -81,6 +81,13 @@ lowres_wide lowres_wide_intrinsics ultrawide ultrawide_intrinsics vga_wide vga_w
 The data folder (i.e. `YOUR_DATA_DIR`) will includes two directories, `Training` and `Validation` which includes all the assets
 belonging to training and validation bin respectively.
 
+
+You can verify whether a downloaded Validation split is complete with:
+```shell script
+python3 check_validation_split.py [3dod/upsampling/raw] --download_dir YOUR_DATA_FOLDER
+```
+For `raw`, also pass `--raw_dataset_assets` with the same asset list used during download.
+
 ## Dataset files formats
 The dataset includes the following formats
 1. `.png` - store RGB images, depth images and confidence images
