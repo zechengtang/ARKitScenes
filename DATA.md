@@ -49,6 +49,9 @@ to download the laser scanner point-clouds (available only for the raw dataset)
 
 Use `--num_workers N` to enable parallel downloads when your network/disk can handle it (default is `1`, sequential).
 
+The downloader now writes to `*.tmp` first and will resume partial downloads on rerun.
+For zip assets, a `.<zip_filename>.unzip_complete` marker is written after successful extraction; if extraction was interrupted, rerunning will unzip again (or re-download the zip when needed).
+
 To download with CSV, `download_data.py` expect the first argument to be a dataset name (i.e. 3dod/upsampling/raw), 
 and no need for the fold, because the fold information exist in the CSV file.  
 ```shell script

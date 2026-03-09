@@ -52,31 +52,50 @@ def raw_files(video_id, assets, metadata):
 def download_file(url, file_name, dst):
     os.makedirs(dst, exist_ok=True)
     filepath = os.path.join(dst, file_name)
+    tmp_filepath = filepath + ".tmp"
 
-    if not os.path.isfile(filepath):
-        command = f"curl {url} -o {file_name}.tmp --fail"
-        print(f"Downloading file {filepath}")
-        try:
-            subprocess.check_call(command, shell=True, cwd=dst)
-        except Exception as error:
-            print(f'Error downloading {url}, error: {error}')
-            return False
-        os.rename(filepath+".tmp", filepath)
-    else:
+    if os.path.isfile(filepath):
         print(f'WARNING: skipping download of existing file: {filepath}')
+        return True
+
+    command = ["curl", url, "-o", tmp_filepath, "--fail"]
+    if os.path.isfile(tmp_filepath):
+        print(f"Resuming partial download {tmp_filepath}")
+        command.extend(["-C", "-"])
+    else:
+        print(f"Downloading file {filepath}")
+
+    try:
+        subprocess.check_call(command)
+    except Exception as error:
+        print(f'Error downloading {url}, error: {error}')
+        return False
+
+    os.replace(tmp_filepath, filepath)
     return True
 
 
 def unzip_file(file_name, dst, keep_zip=True):
     filepath = os.path.join(dst, file_name)
+    marker_filepath = os.path.join(dst, f".{file_name}.unzip_complete")
+
+    if os.path.isfile(marker_filepath):
+        print(f"WARNING: skipping unzip of existing file: {filepath}")
+        if not keep_zip and os.path.isfile(filepath):
+            os.remove(filepath)
+        return True
+
     print(f"Unzipping zip file {filepath}")
-    command = f"unzip -oq {filepath} -d {dst}"
     try:
-        subprocess.check_call(command, shell=True)
+        subprocess.check_call(["unzip", "-oq", filepath, "-d", dst])
     except Exception as error:
         print(f'Error unzipping {filepath}, error: {error}')
         return False
-    if not keep_zip:
+
+    with open(marker_filepath, "w") as marker_file:
+        marker_file.write("ok")
+
+    if not keep_zip and os.path.isfile(filepath):
         os.remove(filepath)
     return True
 
@@ -200,11 +219,19 @@ def download_data(dataset,
         dst_path = os.path.join(dst_dir, file_name)
         url = url_prefix.format(file_name)
 
-        if not file_name.endswith('.zip') or not os.path.isdir(dst_path[:-len('.zip')]):
-            download_file(url, dst_path, dst_dir)
-        else:
+        if not file_name.endswith('.zip'):
+            download_file(url, file_name, dst_dir)
+            return
+
+        marker_filepath = os.path.join(dst_dir, f".{file_name}.unzip_complete")
+        if os.path.isfile(marker_filepath):
             print(f'WARNING: skipping download of existing zip file: {dst_path}')
-        if file_name.endswith('.zip') and os.path.isfile(dst_path):
+            return
+
+        if not os.path.isfile(dst_path):
+            download_file(url, file_name, dst_dir)
+
+        if os.path.isfile(dst_path):
             unzip_file(file_name, dst_dir, keep_zip)
 
     if num_workers > 1:
