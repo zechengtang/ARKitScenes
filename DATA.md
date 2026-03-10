@@ -84,9 +84,10 @@ belonging to training and validation bin respectively.
 
 You can verify whether a downloaded split (Training or Validation) is complete with:
 ```shell script
-python3 check_validation_split.py [3dod/upsampling/raw] --split [Training/Validation] --download_dir YOUR_DATA_FOLDER
+python3 check_data.py [3dod/upsampling/raw] --download_dir YOUR_DATA_FOLDER
 ```
-For `raw`, also pass `--raw_dataset_assets` with the same asset list used during download.
+For `raw`, default checked assets are `lowres_depth vga_wide vga_wide_intrinsics lowres_wide.traj`.
+You can override via `--raw_dataset_assets ...` if you downloaded a different asset set.
 
 ## Dataset files formats
 The dataset includes the following formats

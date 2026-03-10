@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Check whether a downloaded dataset split is complete.
+"""Check whether downloaded dataset splits are complete.
 
 Examples:
-  python3 check_validation_split.py 3dod --split Validation --download_dir data
-  python3 check_validation_split.py 3dod --split Training --download_dir data
-  python3 check_validation_split.py raw --split Training --download_dir data --raw_dataset_assets mov annotation mesh
+  python3 check_data.py 3dod --download_dir data
+  python3 check_data.py 3dod --split Validation --download_dir data
+  python3 check_data.py raw --split Training --download_dir data
 """
 
 import argparse
@@ -24,6 +24,9 @@ DEFAULT_RAW_DATASET_ASSETS = [
     'lowres_wide.traj', 'lowres_wide', 'lowres_wide_intrinsics', 'ultrawide',
     'ultrawide_intrinsics', 'vga_wide', 'vga_wide_intrinsics'
 ]
+DEFAULT_CHECK_RAW_DATASET_ASSETS = [
+    'lowres_depth', 'vga_wide', 'vga_wide_intrinsics', 'lowres_wide.traj'
+]
 
 
 def normalize_split(split):
@@ -33,7 +36,7 @@ def normalize_split(split):
         'validation': 'Validation',
         'val': 'Validation',
     }
-    return split_map[split.lower()]
+    return split_map.get(split.lower(), split)
 
 
 def read_split_csv(path, split):
@@ -94,7 +97,6 @@ def zip_asset_complete(dst_dir, zip_name):
 
     if os.path.isfile(marker_path):
         return True
-    # Backward compatibility for old downloads before marker support.
     if os.path.isdir(extracted_dir):
         return True
     if os.path.isfile(zip_path):
@@ -123,7 +125,6 @@ def check_dataset(dataset, split, download_dir, raw_assets):
             zip_name = f'{vid}.zip'
             if not zip_asset_complete(base, zip_name):
                 missing.append((vid, zip_name, base))
-        # val_attributes.csv is a validation-only extra file.
         if split == 'Validation' and not os.path.isfile(os.path.join(base, 'val_attributes.csv')):
             missing.append(('Validation', 'val_attributes.csv', base))
         return ids, missing
@@ -155,24 +156,8 @@ def check_dataset(dataset, split, download_dir, raw_assets):
     raise ValueError(f'Unsupported dataset: {dataset}')
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Check whether a downloaded split is complete.')
-    parser.add_argument('dataset', choices=['3dod', 'upsampling', 'raw'])
-    parser.add_argument('--split', default='Validation',
-                        choices=['Training', 'Validation', 'train', 'val', 'training', 'validation'])
-    parser.add_argument('--download_dir', default='data')
-    parser.add_argument('--raw_dataset_assets', nargs='+', choices=DEFAULT_RAW_DATASET_ASSETS)
-
-    args = parser.parse_args()
-    split = normalize_split(args.split)
-
-    raw_assets = args.raw_dataset_assets
-    if args.dataset == 'raw' and not raw_assets:
-        parser.error('--raw_dataset_assets is required when dataset=raw')
-
-    ids, missing = check_dataset(args.dataset, split, args.download_dir, raw_assets)
-
-    print(f'Dataset: {args.dataset}')
+def report_result(dataset, split, ids, missing):
+    print(f'Dataset: {dataset}')
     print(f'Split: {split}')
     print(f'Videos expected: {len(ids)}')
 
@@ -193,6 +178,33 @@ def main():
             shown += 1
             if shown >= 100:
                 return
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Check whether downloaded splits are complete.')
+    parser.add_argument('dataset', choices=['3dod', 'upsampling', 'raw'])
+    parser.add_argument('--split', nargs='+',
+                        choices=['Training', 'Validation', 'train', 'val', 'training', 'validation'])
+    parser.add_argument('--download_dir', default='data')
+    parser.add_argument('--raw_dataset_assets', nargs='+', choices=DEFAULT_RAW_DATASET_ASSETS,
+                        default=DEFAULT_CHECK_RAW_DATASET_ASSETS)
+
+    args = parser.parse_args()
+
+    if args.split:
+        splits = []
+        for split in args.split:
+            normalized = normalize_split(split)
+            if normalized not in splits:
+                splits.append(normalized)
+    else:
+        splits = ['Training', 'Validation']
+
+    for idx, split in enumerate(splits):
+        ids, missing = check_dataset(args.dataset, split, args.download_dir, args.raw_dataset_assets)
+        if idx > 0:
+            print('')
+        report_result(args.dataset, split, ids, missing)
 
 
 if __name__ == '__main__':
