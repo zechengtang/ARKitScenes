@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Check whether a downloaded Validation split is complete.
+"""Check whether a downloaded dataset split is complete.
 
 Examples:
-  python3 check_validation_split.py 3dod --download_dir data
-  python3 check_validation_split.py upsampling --download_dir data
-  python3 check_validation_split.py raw --download_dir data --raw_dataset_assets mov annotation mesh
+  python3 check_validation_split.py 3dod --split Validation --download_dir data
+  python3 check_validation_split.py 3dod --split Training --download_dir data
+  python3 check_validation_split.py raw --split Training --download_dir data --raw_dataset_assets mov annotation mesh
 """
 
 import argparse
@@ -26,7 +26,17 @@ DEFAULT_RAW_DATASET_ASSETS = [
 ]
 
 
-def read_split_csv(path, split='Validation'):
+def normalize_split(split):
+    split_map = {
+        'training': 'Training',
+        'train': 'Training',
+        'validation': 'Validation',
+        'val': 'Validation',
+    }
+    return split_map[split.lower()]
+
+
+def read_split_csv(path, split):
     ids = []
     with open(path, newline='') as f:
         reader = csv.DictReader(f)
@@ -92,11 +102,11 @@ def zip_asset_complete(dst_dir, zip_name):
     return False
 
 
-def check_dataset(dataset, download_dir, raw_assets):
+def check_dataset(dataset, split, download_dir, raw_assets):
     if dataset == '3dod':
         split_csv = 'threedod/3dod_train_val_splits.csv'
-        ids = read_split_csv(split_csv)
-        base = os.path.join(download_dir, '3dod', 'Validation')
+        ids = read_split_csv(split_csv, split)
+        base = os.path.join(download_dir, '3dod', split)
         missing = []
         for vid in ids:
             zip_name = f'{vid}.zip'
@@ -106,22 +116,22 @@ def check_dataset(dataset, download_dir, raw_assets):
 
     if dataset == 'upsampling':
         split_csv = 'depth_upsampling/upsampling_train_val_splits.csv'
-        ids = read_split_csv(split_csv)
-        base = os.path.join(download_dir, 'upsampling', 'Validation')
+        ids = read_split_csv(split_csv, split)
+        base = os.path.join(download_dir, 'upsampling', split)
         missing = []
         for vid in ids:
             zip_name = f'{vid}.zip'
             if not zip_asset_complete(base, zip_name):
                 missing.append((vid, zip_name, base))
         # val_attributes.csv is a validation-only extra file.
-        if not os.path.isfile(os.path.join(base, 'val_attributes.csv')):
+        if split == 'Validation' and not os.path.isfile(os.path.join(base, 'val_attributes.csv')):
             missing.append(('Validation', 'val_attributes.csv', base))
         return ids, missing
 
     if dataset == 'raw':
         split_csv = 'raw/raw_train_val_splits.csv'
         metadata_csv = os.path.join(download_dir, 'raw', 'metadata.csv')
-        ids = read_split_csv(split_csv)
+        ids = read_split_csv(split_csv, split)
         if not os.path.isfile(metadata_csv):
             raise FileNotFoundError(
                 f'Raw completeness check requires metadata at {metadata_csv}. '
@@ -131,7 +141,7 @@ def check_dataset(dataset, download_dir, raw_assets):
 
         missing = []
         for vid in ids:
-            base = os.path.join(download_dir, 'raw', 'Validation', vid)
+            base = os.path.join(download_dir, 'raw', split, vid)
             expected_files = expected_raw_files(vid, raw_assets, raw_metadata)
             for name in expected_files:
                 path = os.path.join(base, name)
@@ -146,24 +156,28 @@ def check_dataset(dataset, download_dir, raw_assets):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Check whether Validation split download is complete.')
+    parser = argparse.ArgumentParser(description='Check whether a downloaded split is complete.')
     parser.add_argument('dataset', choices=['3dod', 'upsampling', 'raw'])
+    parser.add_argument('--split', default='Validation',
+                        choices=['Training', 'Validation', 'train', 'val', 'training', 'validation'])
     parser.add_argument('--download_dir', default='data')
     parser.add_argument('--raw_dataset_assets', nargs='+', choices=DEFAULT_RAW_DATASET_ASSETS)
 
     args = parser.parse_args()
+    split = normalize_split(args.split)
 
     raw_assets = args.raw_dataset_assets
     if args.dataset == 'raw' and not raw_assets:
         parser.error('--raw_dataset_assets is required when dataset=raw')
 
-    ids, missing = check_dataset(args.dataset, args.download_dir, raw_assets)
+    ids, missing = check_dataset(args.dataset, split, args.download_dir, raw_assets)
 
     print(f'Dataset: {args.dataset}')
-    print(f'Validation videos expected: {len(ids)}')
+    print(f'Split: {split}')
+    print(f'Videos expected: {len(ids)}')
 
     if not missing:
-        print('✅ Validation split appears complete.')
+        print(f'✅ {split} split appears complete.')
         return
 
     grouped = defaultdict(list)

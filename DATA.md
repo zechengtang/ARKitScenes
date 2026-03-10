@@ -82,9 +82,9 @@ The data folder (i.e. `YOUR_DATA_DIR`) will includes two directories, `Training`
 belonging to training and validation bin respectively.
 
 
-You can verify whether a downloaded Validation split is complete with:
+You can verify whether a downloaded split (Training or Validation) is complete with:
 ```shell script
-python3 check_validation_split.py [3dod/upsampling/raw] --download_dir YOUR_DATA_FOLDER
+python3 check_validation_split.py [3dod/upsampling/raw] --split [Training/Validation] --download_dir YOUR_DATA_FOLDER
 ```
 For `raw`, also pass `--raw_dataset_assets` with the same asset list used during download.
 
