@@ -15,6 +15,8 @@ default_raw_dataset_assets = ['mov', 'annotation', 'mesh', 'confidence', 'highre
                  'lowres_wide.traj', 'lowres_wide', 'lowres_wide_intrinsics', 'ultrawide',
                  'ultrawide_intrinsics', 'vga_wide', 'vga_wide_intrinsics']
 
+default_check_raw_dataset_assets = ['lowres_depth', 'vga_wide', 'vga_wide_intrinsics', 'lowres_wide.traj']
+
 missing_3dod_assets_video_ids = ['47334522', '47334523', '42897421', '45261582', '47333152', '47333155',
                                  '48458535', '48018733', '47429677', '48458541', '42897848', '47895482',
                                  '47333960', '47430089', '42899148', '42897612', '42899153', '42446164',
@@ -289,7 +291,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--raw_dataset_assets",
         nargs='+',
-        choices=default_raw_dataset_assets
+        choices=default_raw_dataset_assets,
+        default=default_check_raw_dataset_assets
     )
 
     parser.add_argument(

@@ -64,7 +64,8 @@ python3 download_data.py 3dod --video_id_csv threedod/3dod_train_val_splits.csv 
 --download_dir /tmp/raw_ARKitScenes/
 ```
 
-Please note that for raw data, you will need to specify the type(s) of data you would like to download.
+For raw data, the default downloaded assets are `lowres_depth vga_wide vga_wide_intrinsics lowres_wide.traj`.
+You can override with `--raw_dataset_assets` to download a different set.
 The choices are 
 ```
 mov annotation mesh confidence highres_depth lowres_depth lowres_wide.traj lowres_wide lowres_wide_intrinsics ultrawide 

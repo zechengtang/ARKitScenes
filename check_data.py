@@ -29,15 +29,6 @@ DEFAULT_CHECK_RAW_DATASET_ASSETS = [
 ]
 
 
-def normalize_split(split):
-    split_map = {
-        'training': 'Training',
-        'train': 'Training',
-        'validation': 'Validation',
-        'val': 'Validation',
-    }
-    return split_map.get(split.lower(), split)
-
 
 def read_split_csv(path, split):
     ids = []
@@ -183,8 +174,7 @@ def report_result(dataset, split, ids, missing):
 def main():
     parser = argparse.ArgumentParser(description='Check whether downloaded splits are complete.')
     parser.add_argument('dataset', choices=['3dod', 'upsampling', 'raw'])
-    parser.add_argument('--split', nargs='+',
-                        choices=['Training', 'Validation', 'train', 'val', 'training', 'validation'])
+    parser.add_argument('--split', nargs='+', choices=['Training', 'Validation'])
     parser.add_argument('--download_dir', default='data')
     parser.add_argument('--raw_dataset_assets', nargs='+', choices=DEFAULT_RAW_DATASET_ASSETS,
                         default=DEFAULT_CHECK_RAW_DATASET_ASSETS)
@@ -194,9 +184,8 @@ def main():
     if args.split:
         splits = []
         for split in args.split:
-            normalized = normalize_split(split)
-            if normalized not in splits:
-                splits.append(normalized)
+            if split not in splits:
+                splits.append(split)
     else:
         splits = ['Training', 'Validation']
 
