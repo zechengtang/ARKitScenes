@@ -3,6 +3,7 @@ import subprocess
 import pandas as pd
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 ARkitscense_url = 'https://docs-assets.developer.apple.com/ml-research/datasets/arkitscenes/v1'
 TRAINING = 'Training'
@@ -13,6 +14,8 @@ POINT_CLOUDS_FOLDER = 'laser_scanner_point_clouds'
 default_raw_dataset_assets = ['mov', 'annotation', 'mesh', 'confidence', 'highres_depth', 'lowres_depth',
                  'lowres_wide.traj', 'lowres_wide', 'lowres_wide_intrinsics', 'ultrawide',
                  'ultrawide_intrinsics', 'vga_wide', 'vga_wide_intrinsics']
+
+default_check_raw_dataset_assets = ['lowres_depth', 'vga_wide', 'vga_wide_intrinsics', 'lowres_wide.traj']
 
 missing_3dod_assets_video_ids = ['47334522', '47334523', '42897421', '45261582', '47333152', '47333155',
                                  '48458535', '48018733', '47429677', '48458541', '42897848', '47895482',
@@ -51,31 +54,50 @@ def raw_files(video_id, assets, metadata):
 def download_file(url, file_name, dst):
     os.makedirs(dst, exist_ok=True)
     filepath = os.path.join(dst, file_name)
+    tmp_filepath = filepath + ".tmp"
 
-    if not os.path.isfile(filepath):
-        command = f"curl {url} -o {file_name}.tmp --fail"
-        print(f"Downloading file {filepath}")
-        try:
-            subprocess.check_call(command, shell=True, cwd=dst)
-        except Exception as error:
-            print(f'Error downloading {url}, error: {error}')
-            return False
-        os.rename(filepath+".tmp", filepath)
-    else:
+    if os.path.isfile(filepath):
         print(f'WARNING: skipping download of existing file: {filepath}')
+        return True
+
+    command = ["curl", url, "-o", tmp_filepath, "--fail"]
+    if os.path.isfile(tmp_filepath):
+        print(f"Resuming partial download {tmp_filepath}")
+        command.extend(["-C", "-"])
+    else:
+        print(f"Downloading file {filepath}")
+
+    try:
+        subprocess.check_call(command)
+    except Exception as error:
+        print(f'Error downloading {url}, error: {error}')
+        return False
+
+    os.replace(tmp_filepath, filepath)
     return True
 
 
 def unzip_file(file_name, dst, keep_zip=True):
     filepath = os.path.join(dst, file_name)
+    marker_filepath = os.path.join(dst, f".{file_name}.unzip_complete")
+
+    if os.path.isfile(marker_filepath):
+        print(f"WARNING: skipping unzip of existing file: {filepath}")
+        if not keep_zip and os.path.isfile(filepath):
+            os.remove(filepath)
+        return True
+
     print(f"Unzipping zip file {filepath}")
-    command = f"unzip -oq {filepath} -d {dst}"
     try:
-        subprocess.check_call(command, shell=True)
+        subprocess.check_call(["unzip", "-oq", filepath, "-d", dst])
     except Exception as error:
         print(f'Error unzipping {filepath}, error: {error}')
         return False
-    if not keep_zip:
+
+    with open(marker_filepath, "w") as marker_file:
+        marker_file.write("ok")
+
+    if not keep_zip and os.path.isfile(filepath):
         os.remove(filepath)
     return True
 
@@ -156,6 +178,7 @@ def download_data(dataset,
                   keep_zip,
                   raw_dataset_assets,
                   should_download_laser_scanner_point_cloud,
+                  num_workers,
                   ):
     metadata = get_metadata(dataset, download_dir)
     if None is metadata:
@@ -163,6 +186,8 @@ def download_data(dataset,
         return
 
     download_dir = os.path.abspath(download_dir)
+    tasks = []
+
     for video_id in sorted(set(video_ids)):
         split = dataset_splits[video_ids.index(video_id)]
         dst_dir = os.path.join(download_dir, dataset, split)
@@ -189,15 +214,35 @@ def download_data(dataset,
             download_laser_scanner_point_clouds_for_video(video_id, metadata, download_dir)
 
         for file_name in file_names:
-            dst_path = os.path.join(dst_dir, file_name)
-            url = url_prefix.format(file_name)
+            tasks.append((file_name, dst_dir, url_prefix))
 
-            if not file_name.endswith('.zip') or not os.path.isdir(dst_path[:-len('.zip')]):
-                download_file(url, dst_path, dst_dir)
-            else:
-                print(f'WARNING: skipping download of existing zip file: {dst_path}')
-            if file_name.endswith('.zip') and os.path.isfile(dst_path):
-                unzip_file(file_name, dst_dir, keep_zip)
+    def process_download_task(task):
+        file_name, dst_dir, url_prefix = task
+        dst_path = os.path.join(dst_dir, file_name)
+        url = url_prefix.format(file_name)
+
+        if not file_name.endswith('.zip'):
+            download_file(url, file_name, dst_dir)
+            return
+
+        marker_filepath = os.path.join(dst_dir, f".{file_name}.unzip_complete")
+        if os.path.isfile(marker_filepath):
+            print(f'WARNING: skipping download of existing zip file: {dst_path}')
+            return
+
+        if not os.path.isfile(dst_path):
+            download_file(url, file_name, dst_dir)
+
+        if os.path.isfile(dst_path):
+            unzip_file(file_name, dst_dir, keep_zip)
+
+    if num_workers > 1:
+        print(f"Using parallel downloads with {num_workers} workers")
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            list(executor.map(process_download_task, tasks))
+    else:
+        for task in tasks:
+            process_download_task(task)
 
     if dataset == 'upsampling' and VALIDATION in dataset_splits:
         val_attributes_file = "val_attributes.csv"
@@ -246,7 +291,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--raw_dataset_assets",
         nargs='+',
-        choices=default_raw_dataset_assets
+        choices=default_raw_dataset_assets,
+        default=default_check_raw_dataset_assets
+    )
+
+    parser.add_argument(
+        "--num_workers",
+        type=int,
+        default=1,
+        help='Number of parallel download workers (default: 1, sequential)'
     )
 
     args = parser.parse_args()
@@ -270,10 +323,13 @@ if __name__ == "__main__":
     else:
         raise Exception('No video ids specified')
 
+    assert args.num_workers >= 1, 'num_workers must be >= 1'
+
     download_data(args.dataset,
                   video_ids_,
                   splits_,
                   args.download_dir,
                   args.keep_zip,
                   args.raw_dataset_assets,
-                  args.download_laser_scanner_point_cloud)
+                  args.download_laser_scanner_point_cloud,
+                  args.num_workers)
